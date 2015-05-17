@@ -1,0 +1,9 @@
+C:\Users\Денис\Desktop\Kursach\Kursach\bin\Debug\Kursach.exe
+C:\Users\Денис\Desktop\Kursach\Kursach\bin\Debug\Kursach.exe.config
+C:\Users\Денис\Desktop\Kursach\Kursach\bin\Debug\Kursach.pdb
+C:\Users\Денис\Desktop\Kursach\Kursach\obj\Debug\Kursach.ClassConfigurationForm.resources
+C:\Users\Денис\Desktop\Kursach\Kursach\obj\Debug\Kursach.UML_diagram_form.resources
+C:\Users\Денис\Desktop\Kursach\Kursach\obj\Debug\Kursach.Properties.Resources.resources
+C:\Users\Денис\Desktop\Kursach\Kursach\obj\Debug\Kursach.csproj.GenerateResource.Cache
+C:\Users\Денис\Desktop\Kursach\Kursach\obj\Debug\Kursach.exe
+C:\Users\Денис\Desktop\Kursach\Kursach\obj\Debug\Kursach.pdb
