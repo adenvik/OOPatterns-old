@@ -7,39 +7,9 @@ using System.IO;
 
 namespace Kursach
 {
-    public class _Class
-    {
-        public string _nameClass { set; get; }
-        List<C_Variables> _variables = new List<C_Variables>();
-        List<C_Methods> _methods = new List<C_Methods>();
-
-        public _Class()
-        {
-            _nameClass = "";
-        }
-        public _Class(string _name)
-        {
-            _nameClass = _name;
-        }
-        public void AddVariable(C_Variables _var)
-        {
-            _variables.Add(_var);
-        }
-        public void AddMethod(C_Methods _meth)
-        {
-            _methods.Add(_meth);
-        }
-        public List<C_Variables> Variables
-        {
-            get { return _variables; }
-        }
-        public List<C_Methods> Methods
-        {
-            get { return _methods; }
-        }
-    }
     public class CodeGeneration_module
     {
+        //Функция меняет тип данных на C# если параметр _cppFile true, или на C++, если параметр false
         private bool SwapType(ref string _type, bool _cppFile)
         {
             string[] masTypeUser =
@@ -86,52 +56,93 @@ namespace Kursach
             }
             return false;
         }
-        public  List<string> CodeH(string _NameClass,List<C_Variables> variables,List<C_Methods> methods)
+        //Функция возвращает лист строк для записи в h файл
+        public List<string> CodeH(ClassBox _cb)
         {
             List<string> temp = new List<string>();
             temp.Add("#include <iostream.h>");
             temp.Add("using namespace std;");
-            temp.Add("class " + _NameClass + "\n{");
+            string tempNameClass = "class " + _cb.Name + " ";
+            if (_cb.ParentClasses.Count != 0)
+            {
+                tempNameClass += ": ";
+                foreach (ClassBox cb in _cb.ParentClasses)
+                {
+                    tempNameClass += "public " + cb.Name + ", ";
+                }
+                tempNameClass = tempNameClass.Remove(tempNameClass.Length - 2);
+            }
+            tempNameClass += "\n{";
+            temp.Add(tempNameClass);
             string tempType = string.Empty;
-            foreach (C_Variables arg in variables)
+            foreach (C_Variables arg in _cb.Variables)
             {
                 tempType = arg.Type;
                 SwapType(ref tempType, false);
-                arg.Type = tempType;
 
-                temp.Add("\t" + arg.Type + " " + arg.Name);
+                temp.Add("\t" + tempType + " " + arg.Name + ";");
+            }
+            //Дописываем агрегацию и композицию
+            foreach (ClassBox cb in _cb.AgregatedClasses)
+            {
+                temp.Add("\t" + cb.Name + " _" + cb.Name + ";");
+            }
+            foreach (ClassBox cb in _cb.CompositedClasses)
+            {
+                temp.Add("\t" + cb.Name + " _" + cb.Name + ";");
             }
             temp.Add("public:");
-            temp.Add(_NameClass + "();");
-            temp.Add("~" + _NameClass + "();");
-            foreach (C_Methods arg in methods)
+            temp.Add(_cb.Name + "();");
+            temp.Add("~" + _cb.Name + "();");
+            foreach (C_Methods arg in _cb.Methods)
             {
                 string tempString = string.Empty;
 
                 tempType = arg.Type;
                 SwapType(ref tempType, false);
-                arg.Type = tempType;
 
-                tempString += "\t" + arg.Type + " " + arg.Name + "(";
+                tempString += "\t" + tempType + " " + arg.Name + "(";
                 foreach (C_Variables var in arg.Variables)
                 {
                     tempType = var.Type;
                     SwapType(ref tempType, false);
-                    var.Type = tempType;
 
-                    tempString += var.Type + " " + var.Name + ", ";
+                    tempString += tempType + " " + var.Name + ", ";
                 }
-                if (tempString[tempString.Length - 2] ==',')
+                if (tempString[tempString.Length - 2] == ',')
                 {
                     tempString = tempString.Remove(tempString.Length - 2);
                 }
                 tempString += ");";
                 temp.Add(tempString);
             }
+            foreach (C_Methods vcm in _cb.VirtualMethods)
+            {
+                string tempString = string.Empty;
+
+                tempType = vcm.Type;
+                SwapType(ref tempType, false);
+
+                tempString += "\t" + "virtual " + tempType + " " + vcm.Name + "(";
+                foreach (C_Variables var in vcm.Variables)
+                {
+                    tempType = var.Type;
+                    SwapType(ref tempType, false);
+
+                    tempString += tempType + " " + var.Name + ", ";
+                }
+                if (tempString[tempString.Length - 2] == ',')
+                {
+                    tempString = tempString.Remove(tempString.Length - 2);
+                }
+                tempString += ") = 0;";
+                temp.Add(tempString);
+            }
             temp.Add("}");
             return temp;
         }
-        public List<string> CodeCpp(string _NameClass,List<C_Methods> methods)
+        //Функция возвращает лист строк для записи в cpp файл
+        public List<string> CodeCpp(string _NameClass, List<C_Methods> methods)
         {
             List<string> temp = new List<string>();
             temp.Add("#include \"" + _NameClass + ".h\"");
@@ -141,236 +152,260 @@ namespace Kursach
 
                 string tempType = arg.Type;
                 SwapType(ref tempType, false);
-                arg.Type = tempType;
 
-                tempString = arg.Type + " " + _NameClass + "::" + arg.Name + '(';
+                tempString = tempType + " " + _NameClass + "::" + arg.Name + '(';
                 foreach (C_Variables var in arg.Variables)
                 {
                     tempType = var.Type;
                     SwapType(ref tempType, false);
-                    var.Type = tempType;
-                    tempString += var.Type + " " + var.Name + ", ";
+
+                    tempString += tempType + " " + var.Name + ", ";
                 }
                 if (tempString[tempString.Length - 2] == ',')
                 {
                     tempString = tempString.Remove(tempString.Length - 2);
                 }
                 tempString += ")\n{}";
+                temp.Add(tempString);
             }
             return temp;
         }
-
-        public void CodeToFile(string _NameClass, List<C_Variables> variables, List<C_Methods> methods)
+        //Функция которая записывает данные в файл, параметр _interface обозначает, нужно ли создавать cpp файл(для интерфейсов он не нужен)
+        public void CodeToFile(ClassBox cb, string path, bool _interface)
         {
-            using (StreamWriter file = new System.IO.StreamWriter(_NameClass + ".h"))
+            using (StreamWriter file = new System.IO.StreamWriter(path + "\\" + cb.Name + ".h"))
             {
-                foreach (string arg in CodeH(_NameClass,variables,methods))
+                foreach (string arg in CodeH(cb))
                 {
                     file.WriteLine(arg);
                 }
                 file.Close();
             }
-            using (StreamWriter file = new System.IO.StreamWriter(_NameClass + ".cpp"))
+            if (!_interface)
             {
-                foreach (string arg in CodeCpp(_NameClass, methods))
+                using (StreamWriter file = new System.IO.StreamWriter(path + "\\" + cb.Name + ".cpp"))
                 {
-                    file.WriteLine(arg);
+                    foreach (string arg in CodeCpp(cb.Name, cb.Methods))
+                    {
+                        file.WriteLine(arg);
+                    }
+                    file.Close();
                 }
-                file.Close();
             }
         }
+        //Функция добавления переменной(-ых) из строки, где первый параметр тип переменной, второй - имя(имена) переменной(-ых)
+        private List<C_Variables> AddVariable(string _type, string[] _names)
+        {
+            //Функция принимает параметры: type - тип, names - "имя1","имя2" и т.д.
+            List<C_Variables> _lcv = new List<C_Variables>();
+            foreach (string _var in _names)
+            {
+                _lcv.Add(new C_Variables(_type, _var));
+            }
+            return _lcv;
+        }
+        //Функция добавления метода
+        private C_Methods AddMethod(List<string> mas)
+        {
+            C_Methods temp = new C_Methods();
+            string tempValues = string.Empty;
+            for (int i = 0; i < mas.Count; i++)
+            {
+                if (mas[i] == "=")
+                {
+                    break;
+                }
+                if (mas[i] == "virtual")
+                {
+                    temp.Virtual = true;
+                    continue;
+                }
+                if (mas[i] == "friend")
+                {
+                    continue;
+                }
+                if (mas[i].Length > 2 && mas[i][mas[i].Length - 2] == '(' && mas[i][mas[i].Length - 1] == ')')
+                {
+                    string tempType = mas[i - 1];
+                    SwapType(ref tempType, true);
+                    temp.Type = tempType;
+                    temp.Name = mas[i].Remove(mas[i].Length - 2);
+                    return temp;
+                }
+                if (mas[i].Length > 3 && mas[i][mas[i].Length - 3] == '(' && mas[i][mas[i].Length - 2] == ')')
+                {
+                    string tempType = mas[i - 1];
+                    SwapType(ref tempType, true);
+                    temp.Type = tempType;
+                    temp.Name = mas[i].Remove(mas[i].Length - 3);
+                    return temp;
+                }
+                //Обрезаем скобочки, если есть
+                if (mas[i][0] == '(')
+                {
+                    mas[i] = mas[i].Remove(0, 1);
+                }
+                if (mas[i][mas[i].Length - 1] == '(')
+                {
+                    mas[i] = mas[i].Remove(mas[i].LastIndexOf('('));
+                }
+                //Обрезаем концовки, если есть
+                if (mas[i][mas[i].Length - 1] == ',')
+                {
+                    mas[i] = mas[i].Remove(mas[i].Length - 1);
+                }
+                if (mas[i][mas[i].Length - 1] == ';')
+                {
+                    mas[i] = mas[i].Remove(mas[i].Length - 2);
+                }
+                if (mas[i][mas[i].Length - 1] == ')')
+                {
+                    mas[i] = mas[i].Remove(mas[i].Length - 1);
+                }
+                //Вырезаем скобочку, если встретилась и добавляем имя, тип переменной к массиву строк
+                if (mas[i].LastIndexOf('(') != -1)
+                {
+                    tempValues += mas[i].Remove(mas[i].LastIndexOf('(')) + " ";
+                    tempValues += mas[i].Remove(0, mas[i].LastIndexOf('(') + 1) + " ";
+                    continue;
+                }
+                //Перегоняем новые значения
+                if (mas[i] != "")
+                {
+                    tempValues += mas[i] + " ";
+                }
+            }
+            string[] _masValues = tempValues.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            //Находим тип и имя метода
+            string type_method = _masValues[0];
+            SwapType(ref type_method, true);
+            temp.Type = type_method;
+            temp.Name = _masValues[1];
+            //Добавляем переменные
+            for (int i = 2; i < _masValues.Length; i += 2)
+            {
+                temp.AddVariable(new C_Variables(_masValues[i], _masValues[i + 1]));
+            }
+            return temp;
+        }
+        //Функция чтения файла для добавления класса\интерфейса
+        public ClassBox ReadFile(string _path)
+        {
+            ClassBox temp = new ClassBox();
+            using (StreamReader sr = new StreamReader(_path))
+            {
+                string[] lines = sr.ReadToEnd().Split(new char[] { '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                bool findclass = false;
+                foreach (string line in lines)
+                {
+                    List<string> _valueInLine = line.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+                    //Находим название класса
+                    if (_valueInLine[0] == "class")
+                    {
+                        temp.Name = _valueInLine[1];
+                        //Получаем родителей, если они есть
+                        int indexParent = 0;
+                        if (_valueInLine.Count > 2)
+                        {
+                            if (_valueInLine[2][0] == ':' && _valueInLine[2].Length > 1)
+                            {
+                                indexParent = 3;
+                            }
+                            if (_valueInLine[2] == ":")
+                            {
+                                indexParent = 4;
+                            }
+                            string tempParents = string.Empty;
+                            for (int i = indexParent; i < _valueInLine.Count; i++)
+                            {
+                                bool index = false;
+                                if (_valueInLine[i].LastIndexOf(',') != -1 && _valueInLine[i].LastIndexOf(',') != _valueInLine[i].Length - 1)
+                                {
+                                    _valueInLine[i] = _valueInLine[i].Remove(_valueInLine[i].LastIndexOf('('));
+                                }
+                                if (_valueInLine[i].LastIndexOf(',') != -1)
+                                {
+                                    _valueInLine[i] = _valueInLine[i].Remove(_valueInLine[i].Length - 1);
+                                    index = true;
+                                }
+                                tempParents += _valueInLine[i] + " ";
+                                if (index)
+                                {
+                                    i++;
+                                }
+                            }
+                            foreach (string parent in tempParents.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
+                            {
+                                temp.ParentClasses.Add(new ClassBox(parent));
+                            }
+                        }
+                        //И идем дальше
+                        findclass = true;
+                        continue;
+                    }
+                    //После того как получили название класса - извлекаем переменные и методы
+                    if (findclass)
+                    {
+                        //Проверяем расплитованную строку - переменная или метод? 
+                        //У метода мы найдем пару '(' ')'
+                        bool variable = true;
+                        foreach (string _value in _valueInLine)
+                        {
+                            if (_value.LastIndexOf('(') != -1)
+                            {
+                                variable = false;
+                                break;
+                            }
+                        }
+                        //Если переменная
+                        if (variable && _valueInLine.Count >= 2)
+                        {
+                            //Получаем тип переменной (-ых)
+                            string _type = _valueInLine[0];
+                            SwapType(ref _type, true);
+                            //Удаляем его из текущей строки
+                            _valueInLine.RemoveAt(0);
+                            //Получаем список переменных, даже если она одна
 
-        //----------------------------------------------------------------------------------------------------
-        //private void AddMethod(string[] fileLines, ref int index, _Class temp)
-        //{
-        //    C_Methods tempM = new C_Methods();
-        //    //------------------------------------------------------------------------------------------------------------------------------------------
-        //    //------------------------------------------------Случай, когда стоят пробелы---------------------------------------------------------------
-        //    if (fileLines[index + 2] == "(")
-        //    {
-        //        tempM.Type = fileLines[index];
-        //        tempM.Name = fileLines[index + 1];
-        //        index += 3;
-        //        while (fileLines[index][fileLines[index].Length - 1] != ';')
-        //        {
-        //            tempM.AddVariable(new C_Variables(fileLines[index],fileLines[index+1]));
-        //            index += 2;
-        //        }
-        //        temp.AddMethod(tempM);
-        //        return;
-        //    }
-
-        //    //------------------------------------------------------------------------------------------------------------------------------------------
-        //    //------------------------------------------------Случай, когда оканчивается на скобку------------------------------------------------------
-
-        //    if (fileLines[index + 1][fileLines[index + 1].Length - 1] == '(')
-        //    {
-        //        tempM.Type = fileLines[index];
-        //        tempM.Name = fileLines[index + 1].Remove(fileLines[index + 1][fileLines[index + 1].Length - 1]);
-        //        index += 2;
-        //        while (fileLines[index][fileLines[index].Length - 1] != ';')
-        //        {
-        //            tempM.AddVariable(new C_Variables(fileLines[index], fileLines[index + 1]));
-        //            index += 2;
-        //        }
-        //        temp.AddMethod(tempM);
-        //        return;
-        //    }
-
-        //    //------------------------------------------------------------------------------------------------------------------------------------------
-        //    //------------------------------------------------Случай, когда тип переменной начинается с (-----------------------------------------------
-
-        //    if (fileLines[index + 2][0] == '(' && fileLines[index + 2].Length > 1)
-        //    {
-        //        tempM.Type = fileLines[index];
-        //        tempM.Name = fileLines[index + 1];
-        //        tempM.AddVariable(new C_Variables(fileLines[index + 2].Remove(0,1),fileLines[index +3]));
-        //        index += 4;
-        //        while (fileLines[index][fileLines[index].Length - 1] != ';')
-        //        {
-        //            tempM.AddVariable(new C_Variables(fileLines[index], fileLines[index + 1]));
-        //            index += 2;
-        //        }
-        //        temp.AddMethod(tempM);
-        //        return;
-        //    }
-
-        //    //------------------------------------------------------------------------------------------------------------------------------------------
-        //    //------------------------------------------------Случай, когда без пробелов----------------------------------------------------------------
-
-        //    if (fileLines[index + 1].LastIndexOf('(') != -1 && fileLines[index + 1].LastIndexOf('(') != fileLines[index+1].Length - 1)
-        //    {
-        //        tempM.Type = fileLines[index];
-        //        tempM.Name = fileLines[index + 1].Remove(fileLines[index + 1].LastIndexOf('('));
-
-        //        string nameVar = string.Empty;
-        //        if (fileLines[index + 2][fileLines[index + 2].Length - 1] == ';')
-        //        {
-        //            nameVar = fileLines[index + 2].Remove(fileLines[index + 2].Length - 2);
-        //        }
-
-        //        tempM.AddVariable(new C_Variables(fileLines[index + 1].Remove(0, fileLines[index + 1].LastIndexOf('(')), nameVar));
-        //        index += 2;
-        //        while (fileLines[index][fileLines[index].Length - 1] != ';')
-        //        {
-        //            if (fileLines[index + 1][fileLines[index + 1].Length - 2] == ')' && fileLines[index + 1][fileLines[index + 1].Length - 1] == ';')
-        //            {
-        //                fileLines[index + 1] = fileLines[index + 1].Remove(fileLines[index + 1].Length - 2);
-        //            }
-        //            tempM.AddVariable(new C_Variables(fileLines[index], fileLines[index + 1]));
-        //            index += 2;
-        //        }
-        //        temp.AddMethod(tempM);
-        //        return;
-        //    }
-        //}
-
-        //public string CodeFromFile(string _pathToFile, List<_Class> listClass)
-        //{
-        //    string name = string.Empty;
-        //    using(StreamReader sr = new StreamReader(_pathToFile))
-        //    {
-        //        String allLines = sr.ReadToEnd();
-        //        string[] fileLines = allLines.Split(new char[] { ' ','\n','\t','\r' }, StringSplitOptions.RemoveEmptyEntries);
-                
-        //        _Class temp = new _Class();
-        //        int index = -1;
-
-        //        for (int i = 0; i < fileLines.Length; i++)
-        //        {
-        //            if (fileLines[i] == "class")
-        //            {
-        //                if (temp._nameClass!="")
-        //                {
-        //                    listClass.Add(temp);
-        //                }
-        //                temp._nameClass = fileLines[i + 1];
-        //                index = i + 1;
-        //                break;
-        //            }
-        //        }
-        //        index++;
-        //        if (fileLines[index] == ":")
-        //        {
-        //            index += 4;
-        //        }
-        //        while (true)
-        //        {
-        //            int checkIndex = index;
-        //            //Проверяем переменную
-        //            if (SwapType(ref fileLines[index], true) && (fileLines[index + 1][fileLines[index + 1].Length - 1] == ';' || fileLines[index + 2] == "="))
-        //            {
-        //                temp.AddVariable(new C_Variables(fileLines[index], fileLines[index + 1]));
-        //                index += 2;
-        //            }
-        //            //Проверяем метод
-        //            //------------------------------------------------------------------------------------------------------------------------------------------
-        //            //------------------------------------------------Случай, когда стоят пробелы---------------------------------------------------------------
-        //            if (SwapType(ref fileLines[index], true) && fileLines[index + 2] == "(")
-        //            {
-        //                AddMethod(fileLines, ref index, temp);
-        //            }
-        //            //и ему подобный, виртуальный метод
-        //            if (fileLines[index] == "virtual" && SwapType(ref fileLines[index + 1], true) && fileLines[index + 3] == "(")
-        //            {
-        //                index++;
-        //                AddMethod(fileLines, ref index, temp);
-        //            }
-        //            //------------------------------------------------------------------------------------------------------------------------------------------
-        //            //------------------------------------------------Случай, когда оканчивается на скобку------------------------------------------------------
-
-        //            if (SwapType(ref fileLines[index], true) && fileLines[index + 1][fileLines[index + 1].Length - 1] == '(')
-        //            {
-        //                AddMethod(fileLines, ref index, temp);
-        //            }
-        //            //и ему подобный, виртуальный метод
-        //            if (fileLines[index] == "virtual" && SwapType(ref fileLines[index + 1], true) && fileLines[index + 2][fileLines[index + 2].Length - 1] == '(')
-        //            {
-        //                index++;
-        //                AddMethod(fileLines, ref index, temp);
-        //            }
-
-        //            //------------------------------------------------------------------------------------------------------------------------------------------
-        //            //------------------------------------------------Случай, когда тип переменной начинается с (-----------------------------------------------
-
-        //            if (SwapType(ref fileLines[index], true) && fileLines[index + 2][0] == '(')
-        //            {
-        //                AddMethod(fileLines, ref index, temp);
-        //            }
-        //            //и ему подобный, виртуальный метод
-        //            if (fileLines[index] == "virtual" && SwapType(ref fileLines[index + 1], true) && fileLines[index + 3][0] == '(')
-        //            {
-        //                index++;
-        //                AddMethod(fileLines, ref index, temp);
-        //            }
-
-        //            //------------------------------------------------------------------------------------------------------------------------------------------
-        //            //------------------------------------------------Случай, когда без пробелов----------------------------------------------------------------
-
-        //            if (SwapType(ref fileLines[index], true) && fileLines[index + 1].LastIndexOf('(') != -1 && fileLines[index + 1].LastIndexOf('(') != fileLines[index + 1].Length - 1)
-        //            {
-        //                AddMethod(fileLines, ref index, temp);
-        //            }
-        //            //и ему подобный, виртуальный метод
-        //            if (fileLines[index] == "virtual" && SwapType(ref fileLines[index + 1], true) && fileLines[index + 2].LastIndexOf('(') != -1)
-        //            {
-        //                index++;
-        //                AddMethod(fileLines, ref index, temp);
-        //            }
-
-        //            //Условие перехода, если не распознано элементов
-        //            if (checkIndex == index)
-        //            {
-        //                index++;
-        //                if (index + 3 == fileLines.Length - 1)
-        //                {
-        //                    listClass.Add(temp);
-        //                    break;
-        //                }
-        //            }
-        //        }
-        //    }
-        //    return name;
-        //}
+                            string tempValue = string.Empty;
+                            foreach (string val in _valueInLine)
+                            {
+                                tempValue += val + " ";
+                            }
+                            string[] _masName = tempValue.Split(new char[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                            //Вырезаем последний символ ';' или ',', если такой имеется
+                            for (int i = 0; i < _masName.Length; i++)
+                            {
+                                if (_masName[i].LastIndexOf(',') != -1 || _masName[i].LastIndexOf(';') != -1)
+                                {
+                                    _masName[i] = _masName[i].Remove(_masName[i].Length - 1);
+                                }
+                            }
+                            //Добавляем переменные
+                            temp.AddListVariables(AddVariable(_type, _masName));
+                        }
+                        //Если метод
+                        if (!variable && _valueInLine.Count >= 2 && _valueInLine[1][0] != '~')
+                        {
+                            if (!AddMethod(_valueInLine).Virtual)
+                            {
+                                temp.Methods.Add(AddMethod(_valueInLine));
+                            }
+                            else
+                            {
+                                temp.VirtualMethods.Add(AddMethod(_valueInLine));
+                            }
+                        }
+                    }
+                    else
+                    //Пока не нашли название класса
+                    {
+                        continue;
+                    }
+                }
+                sr.Close();
+            }
+            return temp;
+        }
     }
 }

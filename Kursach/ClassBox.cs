@@ -4,27 +4,59 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Drawing;
+using System.Windows.Forms;
 
 namespace Kursach
 {
-    public class ClassBox
+    public class ClassBox 
     {
-        public int X{set;get;}
-        public int Y{set;get;}
-        public int Width{set;get;}
+        public int X { set; get; }
+        public int Y { set; get; }
+        public int Width { set; get; }
         public int Height { set; get; }
-        Pen Contour,Select,black;
+        //public int ConnY { set; get; }
+        int ConnY;
+
+        Pen Border, Select, black;
         SolidBrush Background;
 
-        string Name;
+        public string Name { set; get; }
         public List<C_Variables> Variables = new List<C_Variables>();
         public List<C_Methods> Methods = new List<C_Methods>();
+        public List<C_Methods> VirtualMethods = new List<C_Methods>();
         public static int Count = 0;
 
-        bool isSelected;
-        bool Agregation;
-        ClassBox AgregatedClassBox;
+        public List<ClassBox> AgregatedClasses = new List<ClassBox>();
+        public List<ClassBox> CompositedClasses = new List<ClassBox>();
+        public List<ClassBox> ParentClasses = new List<ClassBox>();
 
+        public bool isSelected { set; get; }
+        //public bool isAgregated { set; get; }
+
+        public ClassBox()
+        {
+            Count++;
+            Border = new Pen(new SolidBrush(Color.Black), 2);
+            Select = new Pen(new SolidBrush(Color.LightGreen), 2);
+            black = new Pen(new SolidBrush(Color.Black));
+            Background = new SolidBrush(Color.LightBlue);
+            //isAgregated = false;
+            isSelected = false;
+            ConnY = 10;
+        }
+
+        public ClassBox(string _name)
+        {
+            Name = _name;
+            Count++;
+            Border = new Pen(new SolidBrush(Color.Black), 2);
+            Select = new Pen(new SolidBrush(Color.LightGreen), 2);
+            black = new Pen(new SolidBrush(Color.Black));
+            Background = new SolidBrush(Color.LightBlue);
+            //isAgregated = false;
+            isSelected = false;
+            ConnY = 10;
+        }
 
         public ClassBox(int PosX, int PosY, int Width, int Height)
         {
@@ -33,13 +65,13 @@ namespace Kursach
             Y = PosY;
             this.Width = Width;
             this.Height = Height;
-            Name = "Class " + Count;
+            Name = "Class_" + Count;
             Count++;
-            Contour = new Pen(new SolidBrush(Color.Black),2);
+            Border = new Pen(new SolidBrush(Color.Black),2);
             Select = new Pen(new SolidBrush(Color.LightGreen),2);
             black = new Pen(new SolidBrush(Color.Black));
             Background = new SolidBrush(Color.LightBlue);
-            Agregation = false;
+            //isAgregated = false;
             isSelected = false;
         }
 
@@ -48,63 +80,151 @@ namespace Kursach
             Count--;
         }
 
+        public void AddListVariables(List<C_Variables> _lcv)
+        {
+            foreach (C_Variables cv in _lcv)
+            {
+                Variables.Add(new C_Variables(cv.Type, cv.Name));
+            }
+        }
+
         public void draw(Graphics g)
         {
+            Resize();
             Rectangle R = new Rectangle(X, Y, Width, Height);
-            g.FillRectangle(Background, R);
-            g.DrawRectangle(Contour, R);           
+            if (Variables.Count==0 & Methods.Count == 0 && VirtualMethods.Count != 0)
+            {
+                g.FillRectangle(new SolidBrush(Color.LightYellow), R);
+            }
+            else
+            {
+                g.FillRectangle(Background, R);
+            }
             if (isSelected)
+            {
                 g.DrawRectangle(Select, R);
-            if (Agregation)
-                DrawAgregation(g);
+                g.DrawLine(Select, X, Y + 19, X + Width, Y + 19);
+            }
+            else
+            {
+                g.DrawRectangle(Border, R);
+                g.DrawLine(Border, X, Y + 19, X + Width, Y + 19);
+            }
             g.DrawString(Name, new Font("Arial",10), new SolidBrush(Color.Black), R.X+2, R.Y+2);
-            int dY = 17;
+            int dY = 19;
             foreach (C_Variables cv in Variables)
             {
                 g.DrawString(cv.Type+" "+cv.Name, new Font("Arial",10), new SolidBrush(Color.Black), R.X+2, R.Y+dY);
                 dY+=15;
             }
-            foreach (C_Methods cm in Methods)
+            if (dY != 19)
             {
-                g.DrawString(cm.Type + " " + cm.Name, new Font("Arial", 10), new SolidBrush(Color.Black), R.X + 2, R.Y + dY);
-                dY += 15;
-            }
-        }
-
-        public void draw(Graphics g, int PosX, int PosY)
-        {
-            Rectangle R = new Rectangle(PosX, PosY, Width, Height);
-            g.FillRectangle(Background, R);
-            g.DrawRectangle(Contour, R);
-            if (isSelected)
-                g.DrawRectangle(Select, R);
-            if (Agregation)
-                DrawAgregation(g);
-            g.DrawString(Name, new Font("Arial", 10), new SolidBrush(Color.Black), R.X + 2, R.Y + 2);
-            int dY = 17;
-            foreach (C_Variables cv in Variables)
-            {
-                g.DrawString(cv.Type + " " + cv.Name, new Font("Arial", 10), new SolidBrush(Color.Black), R.X + 2, R.Y + dY);
-                dY += 15;
-            }
-            foreach (C_Methods cm in Methods)
-            {
-                g.DrawString(cm.Type + " " + cm.Name, new Font("Arial", 10), new SolidBrush(Color.Black), R.X + 2, R.Y + dY);
-                dY += 15;
-            }
-        }
-
-        public void DrawAgregation(Graphics g)
-        {
-            if ((X < AgregatedClassBox.X - Width))
-                g.DrawLine(black, X + Width, Y + Height / 2, AgregatedClassBox.X, AgregatedClassBox.Y + AgregatedClassBox.Height / 2);
-            else if ((X+Width >= AgregatedClassBox.X) && (X <= AgregatedClassBox.X + AgregatedClassBox.Width))
-                if (Y < AgregatedClassBox.Y)
-                    g.DrawLine(black, X + Width / 2, Y + Height, AgregatedClassBox.X + AgregatedClassBox.Width / 2, AgregatedClassBox.Y);
+                if (isSelected)
+                {
+                    g.DrawLine(Select, X, Y + dY + 2, X + Width, Y + dY + 2);
+                }
                 else
-                    g.DrawLine(black, X + Width / 2, Y, AgregatedClassBox.X + AgregatedClassBox.Width / 2, AgregatedClassBox.Y + Height);
+                {
+                    g.DrawLine(Border, X, Y + dY + 2, X + Width, Y + dY + 2);
+                }
+            }
+            dY += 2;
+            foreach (C_Methods cm in Methods)
+            {
+                g.DrawString(cm.Type + " " + cm.Name+"()", new Font("Arial", 10), new SolidBrush(Color.Black), R.X + 2, R.Y + dY);
+                dY += 15;
+            }
+            foreach (C_Methods cm in VirtualMethods)
+            {
+                g.DrawString("virtual " + cm.Type + " " + cm.Name + "()", new Font("Arial", 10), new SolidBrush(Color.Black), R.X + 2, R.Y + dY);
+                dY += 15;
+            }
+
+            ConnY = 10;
+            foreach (ClassBox c in AgregatedClasses)
+                drawConnection(g, c, 0);
+            foreach (ClassBox c in CompositedClasses)
+                drawConnection(g, c, 1);
+            foreach (ClassBox c in ParentClasses)
+                drawConnection(g, c, 2);
+        }
+
+        void drawConnection(Graphics g, ClassBox From, int Type)
+        {
+            SolidBrush sb = new SolidBrush(Color.Black);
+            Pen Black = new Pen(sb,2);
+            int x1, y1, x2, y2;
+            if (From.X+From.Width/2<X+Width/2)
+            {
+                x1 = From.X + From.Width+10;
+                y1 = From.Y + From.ConnY;
+                x2 = X-20;
+                y2 = Y + ConnY;
+                g.DrawLine(Black, x1-10, y1, x1, y1);
+                if (Type == 0)
+                    g.DrawPolygon(Black, new Point[] { new Point(x2, y2), new Point(x2 + 10, y2 + 6), new Point(x2 + 20, y2), new Point(x2 + 10, y2 - 6) });
+                if (Type == 1)
+                    g.FillPolygon(sb, new Point[] { new Point(x2, y2), new Point(x2 + 10, y2 + 6), new Point(x2 + 20, y2), new Point(x2 + 10, y2 - 6) });
+                if (Type == 2)
+                {
+                    g.DrawLine(Black,x2,y2,x2 +20, y2);
+                    g.DrawLine(Black,x2+10,y2+6,x2+20,y2);
+                    g.DrawLine(Black,x2+10,y2-6,x2+20,y2);
+                }
+            }
             else
-                g.DrawLine(black, X, Y + Height / 2, AgregatedClassBox.X+AgregatedClassBox.Width, AgregatedClassBox.Y + AgregatedClassBox.Height / 2);
+            {
+                x1 = From.X-10;
+                y1 = From.Y + From.ConnY;
+                x2 = X+Width+20;
+                y2 = Y + ConnY;
+                g.DrawLine(Black, x1, y1, x1 + 10, y1);
+                if (Type == 0)
+                    g.DrawPolygon(Black, new Point[] { new Point(x2, y2), new Point(x2 - 10, y2 + 6), new Point(x2 - 20, y2), new Point(x2 - 10, y2 - 6) });
+                if (Type == 1)
+                    g.FillPolygon(sb, new Point[] { new Point(x2, y2), new Point(x2 - 10, y2 + 6), new Point(x2 - 20, y2), new Point(x2 - 10, y2 - 6) });
+                if (Type == 2)
+                {
+                    g.DrawLine(Black, x2, y2, x2 - 20, y2);
+                    g.DrawLine(Black, x2 - 10, y2 + 6, x2 - 20, y2);
+                    g.DrawLine(Black, x2 - 10, y2 - 6, x2 - 20, y2);
+                }
+            }
+
+            g.DrawLine(Black, x1, y1, x2, y2); //Соединение
+            From.ConnY += 20;
+            ConnY += 20;
+        }
+
+        public void Resize()
+        {
+            //Узнаем длину имени класса
+            Width = TextRenderer.MeasureText(Name, new Font("Arial", 10)).Width;
+            foreach (C_Variables c in Variables)
+            {
+                int temp = TextRenderer.MeasureText(c.Type + " " + c.Name, new Font("Arial", 10)).Width;
+                if (Width < temp)
+                {
+                    Width = temp;
+                }
+            }
+            foreach (C_Methods m in Methods)
+            {
+                int temp = TextRenderer.MeasureText(m.Type + " " + m.Name + "()", new Font("Arial", 10)).Width;
+                if (Width < temp)
+                {
+                    Width = temp;
+                }
+            }
+            foreach (C_Methods vm in VirtualMethods)
+            {
+                int temp = TextRenderer.MeasureText("virtual " + vm.Type + " " + vm.Name + "()", new Font("Arial", 10)).Width;
+                if (Width < temp)
+                {
+                    Width = temp;
+                }
+            }
+            Height = 15 * (Variables.Count + Methods.Count + VirtualMethods.Count + 2);
         }
 
         public void TestValues()
@@ -112,10 +232,10 @@ namespace Kursach
             Variables.Add(new C_Variables("int", "Length"));
             Variables.Add(new C_Variables("int", "Heigth"));
             Variables.Add(new C_Variables("int", "Weigth"));
-            Methods.Add(new C_Methods("void", "Run()"));
+            Methods.Add(new C_Methods("void", "Run"));
             Methods[0].AddVariable(new C_Variables("int", "speed"));
             Methods[0].AddVariable(new C_Variables("int", "deeps"));
-            Methods.Add(new C_Methods("void", "Jump()"));
+            Methods.Add(new C_Methods("void", "Jump"));
             Methods[1].AddVariable(new C_Variables("int", "heigth"));
             Methods[1].AddVariable(new C_Variables("int", "htgieh"));
         }
@@ -124,31 +244,6 @@ namespace Kursach
         {
             if (Name.Length * 7 > Width)
                 Width = Name.Length * 7;
-        }
-
-        public string ClassName
-        {
-            set { Name = value; }
-            get { return Name; }
-        }
-
-
-        public bool Selected
-        {
-            set { isSelected = value; }
-            get { return isSelected; }
-        }
-
-        public bool Agregated
-        {
-            set { Agregation = value; }
-            get { return Agregation; }
-        }
-
-        public ClassBox AgregatedClass
-        {
-            set { AgregatedClassBox = value; }
-            get { return AgregatedClassBox; }
         }
         
     }
